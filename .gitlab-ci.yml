@@ -1,0 +1,16 @@
+validate:
+  image: gramener/builderrors
+  script: builderrors
+
+deploy:
+  stage: deploy
+  script: deploy
+  variables:
+    SERVER: gramener.com
+    URL: voicellm
+    VERSION: static
+    SETUP: npm install --omit=dev
+    CORS: enabled
+  environment:
+    name: production
+    url: https://gramener.com/voicellm/
