@@ -25,11 +25,13 @@ function listen(state) {
 function drawChat() {
   render(
     html`
-      <div class="chat">
+      <div id="chat-container" class="my-5 mx-auto">
         ${messages.map(
           (message) => html`
             <div class="chat-message my-2 ${message.role}">
-              <div class="chat-message-content"><strong>${message.role}</strong>: ${message.content}</div>
+              <div class="chat-message-content">
+                <strong class="text-uppercase">${message.role}</strong>: ${message.content}
+              </div>
             </div>
           `,
         )}
@@ -37,6 +39,12 @@ function drawChat() {
     `,
     document.querySelector("#output"),
   );
+}
+
+function raiseError(content) {
+  messages.push({ role: "error", content });
+  drawChat();
+  throw new Error(content);
 }
 
 try {
@@ -49,14 +57,25 @@ try {
   recognition.addEventListener("result", async (event) => {
     messages.push({ role: "user", content: event.results[event.results.length - 1][0].transcript });
     listen(false);
-    const response = await fetch("https://gramener.com/llmproxy/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ model: "gpt-3.5-turbo", messages }),
-    });
+    let response, result;
+    try {
+      response = await fetch("https://gramener.com/llmproxy/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ model: "gpt-3.5-turbo", messages }),
+      });
+    } catch (err) {
+      raiseError("Failed to fetch response from server: " + err);
+    }
+    try {
+      result = await response.json();
+    } catch (err) {
+      raiseError("Failed to parse response as JSON: " + err);
+    }
+    if (result.error) raiseError(result.error.message ?? JSON.stringify(result.error));
     // Append choices[*].message to messages
-    const { choices } = await response.json();
+    const { choices } = result;
     choices.forEach((choice) => messages.push(choice.message));
     drawChat();
     if (synth) {
