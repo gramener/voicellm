@@ -1,12 +1,18 @@
 import { html, render } from "https://cdn.jsdelivr.net/npm/lit-html/+esm";
 import { classMap } from "https://cdn.jsdelivr.net/npm/lit-html/directives/class-map.js";
 
+const { token } = await fetch("https://llmfoundry.straive.com/token", { credentials: "include" }).then((r) => r.json());
+if (token) document.querySelector("#app").classList.remove("d-none");
+else document.querySelector("#login").classList.remove("d-none");
+
 let recognition, synth;
 let listening = false;
 const messages = [{ role: "system", content: "You are a helpful assistant" }];
 
 function listen(state) {
   listening = state ?? listening;
+  const speaking = synth.speaking;
+  console.log("SPEKAING", speaking);
   render(
     html`
       <div class="text-center">
@@ -14,11 +20,16 @@ function listen(state) {
           <i class="bi bi-mic-fill fs-1"></i>
           <div class="pt-2 speak-btn-text">${listening ? "Listening..." : "Click to talk"}</div>
         </button>
+        <button class="pause btn btn-primary px-5" ?disabled=${!speaking} data-bs-toggle="button">
+          <i class="bi bi-pause-fill fs-1"></i>
+          <div class="pt-2 speak-btn-text">Pause</div>
+        </button>
       </div>
     `,
-    document.querySelector("#mic"),
+    document.querySelector("#controls")
   );
   listening ? recognition.start() : recognition.stop();
+  if (listening) synth.cancel();
   drawChat();
 }
 
@@ -33,11 +44,11 @@ function drawChat() {
                 <strong class="text-uppercase">${message.role}</strong>: ${message.content}
               </div>
             </div>
-          `,
+          `
         )}
       </div>
     `,
-    document.querySelector("#output"),
+    document.querySelector("#output")
   );
 }
 
@@ -54,16 +65,19 @@ try {
   recognition.continuous = true;
   listen(false);
   document.querySelector(".mic").addEventListener("click", () => listen(!listening));
+  document.querySelector(".pause").addEventListener("click", () => {
+    console.log(synth.paused);
+    synth.paused ? synth.resume() : synth.pause();
+  });
   recognition.addEventListener("result", async (event) => {
     messages.push({ role: "user", content: event.results[event.results.length - 1][0].transcript });
     listen(false);
     let response, result;
     try {
-      response = await fetch("https://gramener.com/llmproxy/v1/chat/completions", {
+      response = await fetch("https://llmfoundry.straive.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ model: "gpt-3.5-turbo", messages }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ model: "gpt-4o-mini", messages }),
       });
     } catch (err) {
       raiseError("Failed to fetch response from server: " + err);
@@ -82,12 +96,13 @@ try {
       const utterance = new SpeechSynthesisUtterance(choices[0].message.content);
       utterance.addEventListener("end", () => listen(true));
       synth.speak(utterance);
+      listen(false);
     }
   });
 } catch (err) {
   render(
     html`<div class="alert alert-danger" role="alert">Your browser does not support speech recognition.</div>`,
-    document.querySelector("#output"),
+    document.querySelector("#output")
   );
   throw err;
 }
